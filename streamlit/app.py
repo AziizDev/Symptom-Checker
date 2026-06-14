@@ -67,10 +67,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- Sidebar ---
+# --- Auth check first (populates doctor in session_state) ---
 from engine.presets import PRESETS
 from ui.auth import check_auth
 
+is_authenticated = check_auth()
+
+# --- Sidebar ---
 with st.sidebar:
     if 'doctor' in st.session_state:
         doctor = st.session_state.doctor
@@ -203,7 +206,6 @@ with st.sidebar:
 # --- Page routing ---
 from ui import intake, questioning, results, auth
 
-is_authenticated = check_auth()
 page = st.session_state.get('page', 'intake')
 
 if not is_authenticated:
