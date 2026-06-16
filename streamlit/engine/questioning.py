@@ -67,7 +67,21 @@ class QuestioningEngine:
         effective_max = max(effective_max, 1)
         self._base_max = min(self.q_config['max_questions'], effective_max)
 
+    def _compute_root_counts(self):
+        root_counts = {}
+        for cid in self.data.nodes_condition['snomed_id'].unique():
+            cond_uuids = self.data.edges_present_in[
+                self.data.edges_present_in['condition_snomed_id'] == cid
+            ]['symptom_uuid']
+            n_roots = self.data.nodes_symptom[
+                self.data.nodes_symptom['uuid'].isin(cond_uuids)
+            ]['root_snomed_name'].nunique()
+            root_counts[cid] = max(n_roots, 1)
+        return root_counts
+
     def initialize(self, expansion_result, gender, age):
+        self._root_counts = self._compute_root_counts()
+
         starting_variants = expansion_result.starting_variants_df
         root_name = expansion_result.starting_root['root_snomed_name']
         candidate_pool = set(expansion_result.condition_ids)
@@ -88,10 +102,8 @@ class QuestioningEngine:
                 (self.data.edges_present_in['condition_snomed_id'].isin(candidate_pool))
             ]
             for _, edge in root_edges.iterrows():
-                pcs_w = LIKELIHOOD_SCORES.get(edge['likelihood_condition_given_symptom'], 0)
-                condition_points[edge['condition_snomed_id']] += (
-                    self.ranking_config['yes_point'] * pcs_w
-                )
+                cid = edge['condition_snomed_id']
+                condition_points[cid] += 1.0 / self._root_counts.get(cid, 1)
 
         phase1_remaining = []
         if self.q_config.get('variant_followup_enabled', False):
@@ -242,12 +254,7 @@ class QuestioningEngine:
             for _, edge in connected_edges.iterrows():
                 cid = edge['condition_snomed_id']
                 if cid in state.condition_points:
-                    psc_w = LIKELIHOOD_SCORES.get(
-                        edge['likelihood_symptom_given_condition'], 0
-                    )
-                    state.condition_points[cid] += (
-                        self.ranking_config['no_point'] * psc_w
-                    )
+                    state.condition_points[cid] += -(1.0 / self._root_counts.get(cid, 1))
             eliminated, state.protection_counters = compute_no_eliminations(
                 q['score_uuid'], state.candidate_pool,
                 state.protection_counters, self.elim_config, self.data
@@ -266,12 +273,7 @@ class QuestioningEngine:
             for _, edge in connected_edges.iterrows():
                 cid = edge['condition_snomed_id']
                 if cid in state.condition_points:
-                    pcs_w = LIKELIHOOD_SCORES.get(
-                        edge['likelihood_condition_given_symptom'], 0
-                    )
-                    state.condition_points[cid] += (
-                        self.ranking_config['yes_point'] * pcs_w
-                    )
+                    state.condition_points[cid] += 1.0 / self._root_counts.get(cid, 1)
             eliminated, state.protection_counters = compute_yes_eliminations(
                 q['score_uuid'], state.candidate_pool, state.confirmed_uuids,
                 state.protection_counters, self.elim_config, self.data
@@ -291,12 +293,7 @@ class QuestioningEngine:
             for _, edge in connected_edges.iterrows():
                 cid = edge['condition_snomed_id']
                 if cid in state.condition_points:
-                    pcs_w = LIKELIHOOD_SCORES.get(
-                        edge['likelihood_condition_given_symptom'], 0
-                    )
-                    state.condition_points[cid] += (
-                        self.ranking_config['yes_point'] * pcs_w
-                    )
+                    state.condition_points[cid] += 1.0 / self._root_counts.get(cid, 1)
             eliminated, state.protection_counters = compute_yes_eliminations(
                 q['score_uuid'], state.candidate_pool, state.confirmed_uuids,
                 state.protection_counters, self.elim_config, self.data
@@ -326,12 +323,7 @@ class QuestioningEngine:
             for _, edge in connected_edges.iterrows():
                 cid = edge['condition_snomed_id']
                 if cid in state.condition_points:
-                    psc_w = LIKELIHOOD_SCORES.get(
-                        edge['likelihood_symptom_given_condition'], 0
-                    )
-                    state.condition_points[cid] += (
-                        self.ranking_config['no_point'] * psc_w
-                    )
+                    state.condition_points[cid] += -(1.0 / self._root_counts.get(cid, 1))
             eliminated, state.protection_counters = compute_no_eliminations(
                 q['score_uuid'], state.candidate_pool,
                 state.protection_counters, self.elim_config, self.data
@@ -347,7 +339,7 @@ class QuestioningEngine:
         if answer_yes:
             for cid in affected_in_pool:
                 if cid in state.condition_points:
-                    state.condition_points[cid] += self.ranking_config['yes_point']
+                    state.condition_points[cid] += 1.0 / self._root_counts.get(cid, 1)
             self._log_question(state, q, 'yes', affected_in_pool, set())
         else:
             elim_strengths = self.q_config.get(
@@ -365,7 +357,7 @@ class QuestioningEngine:
             state.candidate_pool -= to_eliminate
             for cid in affected_in_pool:
                 if cid in state.condition_points:
-                    state.condition_points[cid] += self.ranking_config['no_point']
+                    state.condition_points[cid] += -(1.0 / self._root_counts.get(cid, 1))
             self._log_question(state, q, 'no', affected_in_pool, to_eliminate)
 
     def _process_screening_answer(self, state, q, answer_yes):
@@ -378,10 +370,6 @@ class QuestioningEngine:
         if answer_yes:
             triggered = state.red_flag_results.setdefault('triggered', {})
             triggered.setdefault(cid, []).append(flag)
-
-            bonus = RED_FLAG_CONFIG.get('bonus', 1.0)
-            if cid in state.condition_points:
-                state.condition_points[cid] += bonus
 
         state.question_log.append({
             'order': state.questions_asked + 1,
@@ -508,6 +496,7 @@ class QuestioningEngine:
             return state
 
         if state.questions_asked >= self._base_max:
+            state.variant_followup_queue.clear()
             if self.budget['mode'] == 'full' and self.budget['adaptive_max'] > 0:
                 state.phase = 'phase4_adaptive'
                 adaptive_max = self.budget['adaptive_max']

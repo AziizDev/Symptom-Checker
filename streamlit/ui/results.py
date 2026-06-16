@@ -8,7 +8,7 @@ from pyvis.network import Network
 
 from engine.data_loader import load_all_data
 from engine.ranking import rank_conditions
-from engine.config import LIKELIHOOD_SCORES, RED_FLAG_MAP
+from engine.config import LIKELIHOOD_SCORES, RED_FLAG_MAP, RED_FLAG_CONFIG
 from ui.components import (
     render_condition_card, triage_badge_html, triage_color,
     TRIAGE_COLORS, TRIAGE_LABELS, TRIAGE_BG_LIGHT,
@@ -26,6 +26,19 @@ def render():
         state.condition_points, state.age, state.gender, data,
         engine.ranking_config,
     )
+
+    rf = state.red_flag_results
+    bonus = RED_FLAG_CONFIG.get('bonus', 1.0)
+    for cid, flags in rf.get('triggered', {}).items():
+        n_flags = len(flags)
+        pc = result_df.loc[result_df['condition_snomed_id'] == cid, 'pc_weight']
+        if len(pc) > 0:
+            total_bonus = n_flags * bonus * pc.values[0]
+            idx = result_df.index[result_df['condition_snomed_id'] == cid]
+            result_df.loc[idx, 'final_score'] += total_bonus
+    if rf.get('triggered'):
+        result_df.sort_values('final_score', ascending=False, inplace=True)
+        result_df.reset_index(drop=True, inplace=True)
 
     st.markdown(
         f"""
