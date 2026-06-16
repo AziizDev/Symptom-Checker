@@ -72,6 +72,68 @@ RELATION_QUESTIONS = {
     'laterality':        'Which side is it on?',
 }
 
+RED_FLAG_CONFIG = {
+    'enabled': True,
+    'bonus': 1.0,
+    'screening_top_n': 5,
+}
+
+RED_FLAG_MAP = {
+    82272006: {
+        'name': 'Common Cold / Acute Rhinitis',
+        'triggers': [
+            {'flag': 'High fever (>39C)',            'match_roots': [], 'match_variants': ['Fever <severity> severe (104 < x)']},
+            {'flag': 'Shortness of breath',          'match_roots': ['Breathlessness']},
+            {'flag': 'Chest pain',                   'match_roots': ['Chest pain']},
+            {'flag': 'Severe ear pain or headache',  'match_roots': [], 'match_variants': ['Headache <severity> severe', 'Ear pain <severity> severe']},
+        ],
+        'screening_questions': [],
+        'referral_rules': None,
+    },
+    235595009: {
+        'name': 'Gastroesophageal reflux disease',
+        'triggers': [
+            {'flag': 'Dysphagia',              'match_roots': ['Dysphagia']},
+            {'flag': 'Chest pain',             'match_roots': ['Chest pain']},
+            {'flag': 'Vomiting',               'match_roots': ['Vomit']},
+            {'flag': 'Blood in vomit',         'match_roots': [], 'match_variants': ['Vomit <char> bloody in vomit']},
+            {'flag': 'Abdominal pain (severe)', 'match_roots': [], 'match_variants': ['Abdominal pain <severity> severe']},
+        ],
+        'screening_questions': [
+            {'flag': 'Odynophagia (pain on swallowing)',  'question': 'Do you experience pain when swallowing (odynophagia)?'},
+            {'flag': 'Unexplained weight loss',           'question': 'Have you had unexplained weight loss recently?'},
+            {'flag': 'Melena (black tarry stools)',       'question': 'Have you noticed black, tarry stools?'},
+            {'flag': 'Anemia symptoms',                   'question': 'Have you been told you have anemia, or do you feel unusually tired and pale?'},
+            {'flag': 'Pain radiating to arm or jaw',      'question': 'Does the pain radiate to your arm or jaw?'},
+        ],
+        'referral_rules': {
+            'emergency': {
+                'any_flags': ['Blood in vomit', 'Melena (black tarry stools)'],
+                'combo': {'flags': ['Chest pain', 'Pain radiating to arm or jaw'], 'require_all': True},
+            },
+            'urgent_clinic': {
+                'any_flags': ['Dysphagia', 'Odynophagia (pain on swallowing)',
+                              'Unexplained weight loss', 'Anemia symptoms'],
+            },
+        },
+    },
+    398057008: {
+        'name': 'Tension-type headache',
+        'triggers': [
+            {'flag': 'Thunderclap headache',  'match_roots': [], 'match_variants': ['Headache <char> thunderclap']},
+        ],
+        'screening_questions': [
+            {'flag': 'Headache with neurological signs',
+             'question': 'Do you have any neurological symptoms such as vision changes, numbness, weakness, or difficulty speaking?'},
+            {'flag': 'Triggered by cough/sneeze/straining/position change',
+             'question': 'Is your headache triggered or worsened by coughing, sneezing, straining, or changing position?'},
+            {'flag': 'New headache onset after age 50',
+             'question': 'Is this a new type of headache that started after age 50?'},
+        ],
+        'referral_rules': None,
+    },
+}
+
 PREREQUISITE_QUESTIONS = {
     'Pregnant':                            'Are you currently pregnant?',
     'Alcoholic (current consumer)':        'Do you consume alcohol regularly?',

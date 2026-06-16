@@ -51,6 +51,8 @@ def render():
         _render_discovered(q, state)
     elif q['type'] == 'prerequisite':
         _render_prerequisite(q, state)
+    elif q['type'] == 'screening':
+        _render_screening(q, state)
 
     st.divider()
     _render_live_dashboard(engine, state)
@@ -172,6 +174,40 @@ def _render_prerequisite(q, state):
     with col2:
         if st.button(
             "No", use_container_width=True, key=f"btn_no_{qkey}",
+        ):
+            _submit(False, comment)
+
+
+def _render_screening(q, state):
+    st.markdown(
+        f'<div style="background:#fef3c7;border-left:4px solid #f59e0b;'
+        f'padding:10px 14px;border-radius:6px;margin-bottom:12px;'
+        f'font-size:0.88em;color:#92400e;font-weight:500;">'
+        f'Red Flag Screening — {q["condition_name"]}</div>',
+        unsafe_allow_html=True,
+    )
+    st.subheader(q['question'])
+
+    qkey = f"q_{state.questions_asked}"
+    comment_key = f"comment_{qkey}"
+
+    comment = st.text_input(
+        "Comment (optional)",
+        placeholder="Any notes about this question?",
+        key=comment_key,
+    )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button(
+            "Yes", type="primary", use_container_width=True,
+            key=f"btn_yes_{qkey}",
+        ):
+            _submit(True, comment)
+    with col2:
+        if st.button(
+            "No", use_container_width=True,
+            key=f"btn_no_{qkey}",
         ):
             _submit(False, comment)
 

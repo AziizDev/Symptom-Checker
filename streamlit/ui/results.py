@@ -8,7 +8,7 @@ from pyvis.network import Network
 
 from engine.data_loader import load_all_data
 from engine.ranking import rank_conditions
-from engine.config import LIKELIHOOD_SCORES
+from engine.config import LIKELIHOOD_SCORES, RED_FLAG_MAP
 from ui.components import (
     render_condition_card, triage_badge_html, triage_color,
     TRIAGE_COLORS, TRIAGE_LABELS, TRIAGE_BG_LIGHT,
@@ -80,6 +80,35 @@ def render():
                     render_condition_card(row, i + 1, max_score=max_score)
     else:
         st.warning("No conditions survived the elimination process.")
+
+    rf = state.red_flag_results
+    if rf.get('triggered'):
+        render_section_header(
+            "Red Flag Alerts",
+            "Clinical red flags detected during screening"
+        )
+        for cid, flags in rf['triggered'].items():
+            cname = RED_FLAG_MAP.get(cid, {}).get('name', f'Condition {cid}')
+            flags_html = ''.join(
+                f'<li style="margin:4px 0;color:#991b1b;">{f}</li>'
+                for f in flags
+            )
+            st.markdown(
+                f"""
+                <div style="background:#fef2f2;border:1px solid #fecaca;
+                            border-left:4px solid #dc2626;border-radius:8px;
+                            padding:14px 18px;margin-bottom:12px;">
+                    <div style="font-weight:700;color:#991b1b;font-size:1em;
+                                margin-bottom:6px;">
+                        {cname}
+                    </div>
+                    <ul style="margin:0;padding-left:20px;font-size:0.9em;">
+                        {flags_html}
+                    </ul>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     render_section_header(
         "Symptom-Condition Network",

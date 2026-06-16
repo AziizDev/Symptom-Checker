@@ -2,7 +2,7 @@ import pandas as pd
 from dataclasses import dataclass, field
 from typing import Optional
 
-from engine.config import LIKELIHOOD_SCORES, RANKING_CONFIG
+from engine.config import LIKELIHOOD_SCORES, RANKING_CONFIG, RED_FLAG_CONFIG, RED_FLAG_MAP
 from engine.elimination import (
     compute_yes_eliminations, compute_no_eliminations,
     compute_question_value, build_variant_questions,
@@ -35,6 +35,11 @@ class QuestioningState:
     prereqs_done: bool = False
     total_expected: int = 10
     adaptive_asked: int = 0
+    screening_queue: list = field(default_factory=list)
+    screening_asked: int = 0
+    red_flag_results: dict = field(default_factory=lambda: {
+        'triggered': {}, 'screening_answers': {}, 'referrals': {},
+    })
 
 
 class QuestioningEngine:
@@ -205,6 +210,12 @@ class QuestioningEngine:
         if q is None:
             return state
 
+        if q['type'] == 'screening':
+            self._process_screening_answer(state, q, answer)
+            state.questions_asked += 1
+            state.screening_asked += 1
+            return self._advance(state)
+
         if q['type'] == 'variant':
             self._process_variant_answer(state, q, answer)
         elif q['type'] == 'discovered':
@@ -357,44 +368,141 @@ class QuestioningEngine:
                     state.condition_points[cid] += self.ranking_config['no_point']
             self._log_question(state, q, 'no', affected_in_pool, to_eliminate)
 
-    def _advance(self, state):
-        if len(state.candidate_pool) <= self.q_config['min_pool_size']:
-            state.finished = True
-            state.stop_reason = (
-                f'Pool narrowed to {len(state.candidate_pool)} conditions'
-            )
-            state.current_question = None
-            return state
+    def _process_screening_answer(self, state, q, answer_yes):
+        cid = q['condition_id']
+        flag = q['flag']
 
-        if self.q_config['score_threshold'] is not None and state.candidate_pool:
-            max_score = max(
-                state.condition_points.get(c, 0) for c in state.candidate_pool
-            )
-            if max_score >= self.q_config['score_threshold']:
-                state.finished = True
-                state.stop_reason = f'Condition reached score {max_score:.1f}'
-                state.current_question = None
-                return state
+        answers = state.red_flag_results.setdefault('screening_answers', {})
+        answers.setdefault(cid, []).append({'flag': flag, 'answer': answer_yes})
+
+        if answer_yes:
+            triggered = state.red_flag_results.setdefault('triggered', {})
+            triggered.setdefault(cid, []).append(flag)
+
+            bonus = RED_FLAG_CONFIG.get('bonus', 1.0)
+            if cid in state.condition_points:
+                state.condition_points[cid] += bonus
+
+        state.question_log.append({
+            'order': state.questions_asked + 1,
+            'type': 'screening',
+            'question': q['question'],
+            'answer': 'yes' if answer_yes else 'no',
+            'eliminated': 0,
+            'pool_after': len(state.candidate_pool),
+            'connected': q['condition_name'],
+        })
+
+    def _try_enter_screening(self, state):
+        mode = self.budget['mode']
+        screening_max = self.budget.get('screening_max', 0)
+        if mode == 'base_only' or screening_max <= 0:
+            return False
+        if not RED_FLAG_CONFIG.get('enabled', False):
+            return False
+
+        queue = self._build_screening_queue(state)
+        if not queue:
+            return False
+
+        state.phase = 'phase5_screening'
+        state.screening_queue = queue
+        state.total_expected = state.questions_asked + min(len(queue), screening_max)
+        return True
+
+    def _build_screening_queue(self, state):
+        confirmed_info = self.data.nodes_symptom[
+            self.data.nodes_symptom['uuid'].isin(state.confirmed_uuids)
+        ]
+        confirmed_roots = set(confirmed_info['root_snomed_name'].dropna().unique())
+        confirmed_names = set(confirmed_info['name'].dropna().unique())
+
+        triggered = {}
+        for cid, rf_entry in RED_FLAG_MAP.items():
+            if cid not in state.candidate_pool:
+                continue
+            cond_flags = []
+            for trigger in rf_entry.get('triggers', []):
+                flag_name = trigger['flag']
+                match_roots = set(trigger.get('match_roots', []))
+                match_variants = set(trigger.get('match_variants', []))
+                if match_variants and match_variants & confirmed_names:
+                    cond_flags.append(flag_name)
+                elif match_roots and match_roots & confirmed_roots:
+                    cond_flags.append(flag_name)
+            if cond_flags:
+                triggered[cid] = cond_flags
+
+        state.red_flag_results['triggered'] = triggered
+
+        top_n = RED_FLAG_CONFIG.get('screening_top_n', 5)
+        sorted_pool = sorted(
+            state.candidate_pool,
+            key=lambda c: state.condition_points.get(c, 0),
+            reverse=True,
+        )
+        top_n_cids = set(sorted_pool[:top_n])
+
+        queue = []
+        for cid, rf_entry in RED_FLAG_MAP.items():
+            if cid not in state.candidate_pool:
+                continue
+            if cid not in top_n_cids:
+                continue
+            for sq in rf_entry.get('screening_questions', []):
+                queue.append({
+                    'type': 'screening',
+                    'condition_id': cid,
+                    'condition_name': rf_entry['name'],
+                    'flag': sq['flag'],
+                    'question': sq['question'],
+                })
+        return queue
+
+    def _finish(self, state, reason):
+        state.finished = True
+        state.stop_reason = reason
+        state.current_question = None
+        return state
+
+    def _advance(self, state):
+        if state.phase != 'phase5_screening':
+            if len(state.candidate_pool) <= self.q_config['min_pool_size']:
+                if not self._try_enter_screening(state):
+                    return self._finish(state, f'Pool narrowed to {len(state.candidate_pool)} conditions')
+                return self._advance(state)
+
+            if self.q_config['score_threshold'] is not None and state.candidate_pool:
+                max_score = max(
+                    state.condition_points.get(c, 0) for c in state.candidate_pool
+                )
+                if max_score >= self.q_config['score_threshold']:
+                    if not self._try_enter_screening(state):
+                        return self._finish(state, f'Condition reached score {max_score:.1f}')
+                    return self._advance(state)
 
         if state.questions_asked >= self.budget['global_max']:
-            state.finished = True
-            state.stop_reason = 'Global question budget reached'
-            state.current_question = None
+            return self._finish(state, 'Global question budget reached')
+
+        if state.phase == 'phase5_screening':
+            screening_max = self.budget.get('screening_max', 2)
+            if state.screening_asked >= screening_max or not state.screening_queue:
+                return self._finish(state, 'Assessment complete')
+            sq = state.screening_queue.pop(0)
+            state.current_question = sq
             return state
 
         if state.phase == 'phase4_adaptive':
             adaptive_max = self.budget.get('adaptive_max', 2)
             if state.adaptive_asked >= adaptive_max:
-                state.finished = True
-                state.stop_reason = 'Adaptive budget exhausted'
-                state.current_question = None
-                return state
+                if not self._try_enter_screening(state):
+                    return self._finish(state, 'Adaptive budget exhausted')
+                return self._advance(state)
             best = self._score_and_pick_best(state)
             if best is None:
-                state.finished = True
-                state.stop_reason = 'No more valuable questions'
-                state.current_question = None
-                return state
+                if not self._try_enter_screening(state):
+                    return self._finish(state, 'No more valuable questions')
+                return self._advance(state)
             state.adaptive_asked += 1
             state.current_question = best
             return state
@@ -405,10 +513,9 @@ class QuestioningEngine:
                 adaptive_max = self.budget['adaptive_max']
                 state.total_expected = state.questions_asked + adaptive_max
                 return self._advance(state)
-            state.finished = True
-            state.stop_reason = 'Maximum questions reached'
-            state.current_question = None
-            return state
+            if not self._try_enter_screening(state):
+                return self._finish(state, 'Maximum questions reached')
+            return self._advance(state)
 
         if state.variant_followup_queue:
             q = state.variant_followup_queue.pop(0)
