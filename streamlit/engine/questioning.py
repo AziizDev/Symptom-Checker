@@ -43,6 +43,22 @@ class QuestioningEngine:
         self.elim_config = config['elim']
         self.ranking_config = config['ranking']
         self.q_config = config['questioning']
+        self.budget = config.get('budget', {
+            'mode': 'full', 'global_max': 14,
+            'adaptive_max': 2, 'screening_max': 2,
+        })
+        self._apply_budget()
+
+    def _apply_budget(self):
+        mode = self.budget['mode']
+        effective_max = self.budget['global_max']
+        if mode == 'full':
+            effective_max -= self.budget['adaptive_max']
+            effective_max -= self.budget['screening_max']
+        elif mode == 'no_adaptive':
+            effective_max -= self.budget['screening_max']
+        effective_max = max(effective_max, 1)
+        self._base_max = min(self.q_config['max_questions'], effective_max)
 
     def initialize(self, expansion_result, gender, age):
         starting_variants = expansion_result.starting_variants_df
@@ -338,7 +354,7 @@ class QuestioningEngine:
             self._log_question(state, q, 'no', affected_in_pool, to_eliminate)
 
     def _advance(self, state):
-        if state.questions_asked >= self.q_config['max_questions']:
+        if state.questions_asked >= self._base_max:
             state.finished = True
             state.stop_reason = 'Maximum questions reached'
             state.current_question = None

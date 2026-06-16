@@ -13,6 +13,11 @@ env/
 .vscode/
 .idea/
 
+# Data & docs
+data/
+docs/
+prescription/
+
 # OS
 .DS_Store
 Thumbs.db

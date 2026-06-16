@@ -18,9 +18,9 @@ def render():
         st.rerun()
         return
 
-    max_q = engine.q_config['max_questions']
-    progress = state.questions_asked / max_q
-    st.progress(progress, text=f"Question {state.questions_asked + 1} of {max_q}")
+    global_max = engine.budget['global_max']
+    progress = min(state.questions_asked / global_max, 1.0)
+    st.progress(progress, text=f"Question {state.questions_asked + 1} of ~{global_max}")
 
     phase_labels = {
         'phase1_variant': 'Symptom Details',

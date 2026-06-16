@@ -129,9 +129,9 @@ with st.sidebar:
             st.session_state.preset = preset
 
         preset_desc = {
-            'Standard': 'Balanced assessment with 10 questions.',
-            'Safety-first': 'More thorough. 15 questions, triage protection.',
-            'Quick screen': 'Fast triage with 6 questions.',
+            'Standard': 'Balanced assessment — up to 14 Qs (adaptive + red flags).',
+            'Safety-first': 'Thorough — up to 18 Qs, triage protection ON.',
+            'Quick screen': 'Fast triage — 6 Qs, no adaptive/red flags.',
         }
         st.caption(preset_desc.get(preset, ''))
 
@@ -139,8 +139,35 @@ with st.sidebar:
             overrides = {}
             p = PRESETS[preset]
 
+            st.markdown("**Question Budget**")
+            budget_modes = ['full', 'no_adaptive', 'base_only']
+            budget_labels = {
+                'full': 'Full (adaptive + red flags)',
+                'no_adaptive': 'No adaptive (red flags only)',
+                'base_only': 'Base only (no extras)',
+            }
+            budget_mode = st.selectbox(
+                "Budget mode",
+                budget_modes,
+                index=budget_modes.index(p.get('budget_mode', 'full')),
+                format_func=lambda m: budget_labels[m],
+                key='adv_budget_mode',
+            )
+            if budget_mode != p.get('budget_mode', 'full'):
+                overrides['budget_mode'] = budget_mode
+
+            budget_global = st.slider(
+                "Global max questions", 6, 20,
+                p.get('budget_global_max', 14),
+                key='adv_budget_global',
+            )
+            if budget_global != p.get('budget_global_max', 14):
+                overrides['budget_global_max'] = budget_global
+
+            st.divider()
+
             max_q = st.slider(
-                "Max questions", 5, 20, p['max_questions'],
+                "Base max questions", 5, 15, p['max_questions'],
                 key='adv_max_q',
             )
             if max_q != p['max_questions']:

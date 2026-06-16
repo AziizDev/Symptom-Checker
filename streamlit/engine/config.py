@@ -34,6 +34,13 @@ RANKING_CONFIG = {
     'demographic_method': 'addition',
 }
 
+QUESTION_BUDGET = {
+    'mode': 'full',            # 'full' | 'no_adaptive' | 'base_only'
+    'global_max': 14,          # hard ceiling across ALL question phases
+    'adaptive_max': 2,         # max adaptive extra Qs (used in 'full' mode)
+    'screening_max': 2,        # max red-flag screening Qs total (used in 'full' and 'no_adaptive')
+}
+
 QUESTIONING_CONFIG = {
     'max_questions': 10,
     'top_n_discovered': 20,
