@@ -18,14 +18,15 @@ def render():
         st.rerun()
         return
 
-    global_max = engine.budget['global_max']
-    progress = min(state.questions_asked / global_max, 1.0)
-    st.progress(progress, text=f"Question {state.questions_asked + 1} of ~{global_max}")
+    total = state.total_expected
+    progress = min(state.questions_asked / total, 1.0)
+    st.progress(progress, text=f"Question {state.questions_asked + 1} of {total}")
 
     phase_labels = {
         'phase1_variant': 'Symptom Details',
         'phase2_prereq': 'Medical History',
         'phase3_main': 'Assessment',
+        'phase4_adaptive': 'Refining',
     }
 
     st.markdown(

@@ -33,6 +33,8 @@ class QuestioningState:
     age: int
     discovered_q_count: int = 0
     prereqs_done: bool = False
+    total_expected: int = 10
+    adaptive_asked: int = 0
 
 
 class QuestioningEngine:
@@ -137,6 +139,8 @@ class QuestioningEngine:
             age=age,
             discovered_q_count=0,
             prereqs_done=prereqs_done,
+            total_expected=self._base_max,
+            adaptive_asked=0,
         )
 
         state = self._advance(state)
@@ -354,12 +358,6 @@ class QuestioningEngine:
             self._log_question(state, q, 'no', affected_in_pool, to_eliminate)
 
     def _advance(self, state):
-        if state.questions_asked >= self._base_max:
-            state.finished = True
-            state.stop_reason = 'Maximum questions reached'
-            state.current_question = None
-            return state
-
         if len(state.candidate_pool) <= self.q_config['min_pool_size']:
             state.finished = True
             state.stop_reason = (
@@ -377,6 +375,40 @@ class QuestioningEngine:
                 state.stop_reason = f'Condition reached score {max_score:.1f}'
                 state.current_question = None
                 return state
+
+        if state.questions_asked >= self.budget['global_max']:
+            state.finished = True
+            state.stop_reason = 'Global question budget reached'
+            state.current_question = None
+            return state
+
+        if state.phase == 'phase4_adaptive':
+            adaptive_max = self.budget.get('adaptive_max', 2)
+            if state.adaptive_asked >= adaptive_max:
+                state.finished = True
+                state.stop_reason = 'Adaptive budget exhausted'
+                state.current_question = None
+                return state
+            best = self._score_and_pick_best(state)
+            if best is None:
+                state.finished = True
+                state.stop_reason = 'No more valuable questions'
+                state.current_question = None
+                return state
+            state.adaptive_asked += 1
+            state.current_question = best
+            return state
+
+        if state.questions_asked >= self._base_max:
+            if self.budget['mode'] == 'full' and self.budget['adaptive_max'] > 0:
+                state.phase = 'phase4_adaptive'
+                adaptive_max = self.budget['adaptive_max']
+                state.total_expected = state.questions_asked + adaptive_max
+                return self._advance(state)
+            state.finished = True
+            state.stop_reason = 'Maximum questions reached'
+            state.current_question = None
+            return state
 
         if state.variant_followup_queue:
             q = state.variant_followup_queue.pop(0)

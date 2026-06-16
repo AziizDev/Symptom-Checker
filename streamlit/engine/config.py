@@ -36,13 +36,13 @@ RANKING_CONFIG = {
 
 QUESTION_BUDGET = {
     'mode': 'full',            # 'full' | 'no_adaptive' | 'base_only'
-    'global_max': 14,          # hard ceiling across ALL question phases
+    'global_max': 13,          # hard ceiling across ALL question phases
     'adaptive_max': 2,         # max adaptive extra Qs (used in 'full' mode)
     'screening_max': 2,        # max red-flag screening Qs total (used in 'full' and 'no_adaptive')
 }
 
 QUESTIONING_CONFIG = {
-    'max_questions': 10,
+    'max_questions': 9,
     'top_n_discovered': 20,
     'min_pool_size': 3,
     'min_question_score': 0.0,
