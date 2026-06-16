@@ -292,9 +292,9 @@ def _render_graph(result_df, state, data, max_nodes=30):
             f"cond_{cid}",
             label=row['condition_name'][:28],
             title=(
-                f"<b>{row['condition_name']}</b><br>"
-                f"Score: {row['final_score']:.1f}<br>"
-                f"Triage: {triage_label}<br>"
+                f"{row['condition_name']}\n"
+                f"Score: {row['final_score']:.1f}\n"
+                f"Triage: {triage_label}\n"
                 f"Matches: {row['num_symptom_matches']}"
             ),
             color={
@@ -323,8 +323,8 @@ def _render_graph(result_df, state, data, max_nodes=30):
             sym_id,
             label=display_name[:22],
             title=(
-                f"<b>Symptom</b><br>"
-                f"{sym['name']}<br>"
+                f"Symptom\n"
+                f"{sym['name']}\n"
                 f"Root: {sym['root_snomed_name']}"
             ),
             color={

@@ -53,7 +53,7 @@ QUESTIONING_CONFIG = {
     'prerequisite_mode': 'pre_screen',
     'max_prerequisite_prescreens': 3,
     'prerequisite_elim_strengths': ['very_high', 'high'],
-    'prerequisite_after_n_discovered': 3,
+    'prerequisite_after_n_discovered': 0,
     'prerequisite_cf_mode': 'dynamic',
 }
 
