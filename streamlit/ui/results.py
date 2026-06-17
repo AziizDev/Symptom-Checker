@@ -40,6 +40,26 @@ def render():
         result_df.sort_values('final_score', ascending=False, inplace=True)
         result_df.reset_index(drop=True, inplace=True)
 
+    if not st.session_state.get('results_logged'):
+        from db.models import log_results
+        session_id = st.session_state.get('db_session_id')
+        if session_id and len(result_df) > 0:
+            rows = []
+            for rank_pos, row in result_df.iterrows():
+                rows.append({
+                    'session_id': session_id,
+                    'rank_position': rank_pos + 1,
+                    'condition_snomed_id': int(row['condition_snomed_id']),
+                    'condition_name': row['condition_name'],
+                    'final_score': round(float(row['final_score']), 4),
+                    'yn_points': round(float(row['yn_points']), 4),
+                    'pcs_score': round(float(row['pcs_score']), 4),
+                    'triage_level': row['triage_level'],
+                    'num_symptom_matches': int(row['num_symptom_matches']),
+                })
+            log_results(session_id, rows)
+            st.session_state.results_logged = True
+
     st.markdown(
         f"""
         <div style="
@@ -204,7 +224,7 @@ def render():
         with st.form("evaluation_form"):
             rank = st.selectbox(
                 "Does your intended diagnosis/condition come in which rank?",
-                options=[1, 2, 3, 4, 5],
+                options=[1, 2, 3, 4, 5, "None of these (please specify in the comment)"],
                 index=0,
             )
             review = st.text_area(
@@ -224,7 +244,8 @@ def render():
             else:
                 from db.models import log_evaluation
                 session_id = st.session_state.get('db_session_id')
-                log_evaluation(session_id, rank, review.strip())
+                rank_val = 0 if isinstance(rank, str) else rank
+                log_evaluation(session_id, rank_val, review.strip())
                 st.session_state.evaluation_submitted = True
                 st.rerun()
     else:

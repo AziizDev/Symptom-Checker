@@ -74,6 +74,16 @@ def log_question(session_id, order, q_type, question_text, answer, comment,
         pass
 
 
+def log_results(session_id, result_rows):
+    sb = get_supabase()
+    if not sb or not session_id or not result_rows:
+        return
+    try:
+        sb.table('condition_results').insert(result_rows).execute()
+    except Exception:
+        pass
+
+
 def log_evaluation(session_id, intended_rank, comment):
     sb = get_supabase()
     if not sb or not session_id:
