@@ -211,64 +211,68 @@ def render():
             st.caption("No questions were asked.")
 
     # --- Evaluation Section ---
-    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-    render_section_header(
-        "Evaluation",
-        "Please evaluate this assessment before starting a new one"
+    # TEMPORARILY DISABLED (testing): doctor evaluation form.
+    # To re-enable, uncomment the block below and remove the standalone
+    # "Start New Assessment" button at the end of this function.
+    #
+    # st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+    # render_section_header(
+    #     "Evaluation",
+    #     "Please evaluate this assessment before starting a new one"
+    # )
+    #
+    # evaluation_submitted = st.session_state.get('evaluation_submitted', False)
+    #
+    # if not evaluation_submitted:
+    #     with st.form("evaluation_form"):
+    #         rank = st.selectbox(
+    #             "Does your intended diagnosis/condition come in which rank?",
+    #             options=[1, 2, 3, 4, 5, "None of these (please specify in the comment)"],
+    #             index=0,
+    #         )
+    #         review = st.text_area(
+    #             "Your review on the overall examination "
+    #             "and what should improve",
+    #             placeholder="Please share your detailed feedback...",
+    #             height=150,
+    #         )
+    #         submitted = st.form_submit_button(
+    #             "Submit Evaluation", type="primary",
+    #             use_container_width=True,
+    #         )
+    #
+    #     if submitted:
+    #         if not review or not review.strip():
+    #             st.error("Please provide your review comment — it's required.")
+    #         else:
+    #             from db.models import log_evaluation
+    #             session_id = st.session_state.get('db_session_id')
+    #             rank_val = 0 if isinstance(rank, str) else rank
+    #             log_evaluation(session_id, rank_val, review.strip())
+    #             st.session_state.evaluation_submitted = True
+    #             st.rerun()
+    # else:
+    #     st.success("Thank you for your evaluation!")
+
+    st.markdown(
+        "<div style='height:20px'></div>", unsafe_allow_html=True,
     )
 
-    evaluation_submitted = st.session_state.get('evaluation_submitted', False)
-
-    if not evaluation_submitted:
-        with st.form("evaluation_form"):
-            rank = st.selectbox(
-                "Does your intended diagnosis/condition come in which rank?",
-                options=[1, 2, 3, 4, 5, "None of these (please specify in the comment)"],
-                index=0,
-            )
-            review = st.text_area(
-                "Your review on the overall examination "
-                "and what should improve",
-                placeholder="Please share your detailed feedback...",
-                height=150,
-            )
-            submitted = st.form_submit_button(
-                "Submit Evaluation", type="primary",
-                use_container_width=True,
-            )
-
-        if submitted:
-            if not review or not review.strip():
-                st.error("Please provide your review comment — it's required.")
-            else:
-                from db.models import log_evaluation
-                session_id = st.session_state.get('db_session_id')
-                rank_val = 0 if isinstance(rank, str) else rank
-                log_evaluation(session_id, rank_val, review.strip())
-                st.session_state.evaluation_submitted = True
-                st.rerun()
-    else:
-        st.success("Thank you for your evaluation!")
-
-        st.markdown(
-            "<div style='height:20px'></div>", unsafe_allow_html=True,
-        )
-
-        if st.button(
-            "Start New Assessment", type="primary",
-            use_container_width=True,
-        ):
-            doctor = st.session_state.get('doctor')
-            preset = st.session_state.get('preset', 'Standard')
-            for key in list(st.session_state.keys()):
-                if key not in (
-                    'doctor', 'preset', 'preset_select', 'admin_pin_input',
-                ):
-                    del st.session_state[key]
-            if doctor:
-                st.session_state.doctor = doctor
-            st.session_state.preset = preset
-            st.session_state.page = 'intake'
-            st.rerun()
+    if st.button(
+        "Start New Assessment", type="primary",
+        use_container_width=True,
+    ):
+        doctor = st.session_state.get('doctor')
+        preset = st.session_state.get('preset', 'Standard')
+        for key in list(st.session_state.keys()):
+            if key not in (
+                'doctor', 'preset', 'preset_select', 'admin_pin_input',
+            ):
+                del st.session_state[key]
+        if doctor:
+            st.session_state.doctor = doctor
+        st.session_state.preset = preset
+        st.session_state.page = 'intake'
+        st.rerun()
 
 
