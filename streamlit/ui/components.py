@@ -1,4 +1,11 @@
+import os
+import tempfile
+
 import streamlit as st
+import streamlit.components.v1 as st_components
+from pyvis.network import Network
+
+from engine.config import LIKELIHOOD_SCORES
 
 TRIAGE_COLORS = {
     'emergency': '#dc2626',
@@ -172,6 +179,151 @@ def render_metric_card(label, value, color="#2563eb"):
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_condition_network(conditions, confirmed_uuids, data,
+                             height=500, max_nodes=30):
+    """Draw the symptom-condition network for the given ranked conditions.
+
+    `conditions` is a list of dicts with at least: condition_snomed_id,
+    condition_name, triage_level, final_score, and num_symptom_matches
+    (or num_matches). Confirmed symptoms are drawn as blue diamonds.
+    """
+    net = Network(
+        height=f"{height}px", width="100%",
+        bgcolor="#f8fafc", font_color="#1e293b",
+        directed=False,
+    )
+    net.set_options("""
+    {
+        "physics": {
+            "enabled": true,
+            "barnesHut": {
+                "gravitationalConstant": -4000,
+                "springLength": 160,
+                "springConstant": 0.04,
+                "damping": 0.09
+            },
+            "stabilization": {"iterations": 150}
+        },
+        "nodes": {
+            "font": {"size": 12, "face": "Inter, sans-serif", "color": "#1e293b"},
+            "borderWidth": 2,
+            "borderWidthSelected": 3
+        },
+        "edges": {
+            "color": {"color": "#94a3b8", "highlight": "#2563eb"},
+            "width": 1.5,
+            "smooth": {"type": "continuous"}
+        },
+        "interaction": {
+            "hover": true,
+            "zoomView": true,
+            "dragView": true,
+            "tooltipDelay": 100
+        }
+    }
+    """)
+
+    node_count = 0
+    top_cids = set()
+
+    for row in conditions:
+        if node_count >= max_nodes:
+            break
+        cid = row['condition_snomed_id']
+        top_cids.add(cid)
+        color = TRIAGE_COLORS.get(row['triage_level'], '#6b7280')
+        triage_label = TRIAGE_LABELS.get(
+            row['triage_level'], row['triage_level']
+        )
+        matches = row.get('num_symptom_matches', row.get('num_matches', 0))
+        net.add_node(
+            f"cond_{cid}",
+            label=row['condition_name'][:28],
+            title=(
+                f"{row['condition_name']}\n"
+                f"Score: {row['final_score']:.1f}\n"
+                f"Triage: {triage_label}\n"
+                f"Matches: {matches}"
+            ),
+            color={
+                'background': color, 'border': color,
+                'highlight': {'background': color, 'border': '#0f172a'},
+            },
+            size=max(12, 22 + row['final_score'] * 2),
+            shape='dot',
+            font={'color': '#1e293b', 'size': 12},
+        )
+        node_count += 1
+
+    confirmed_symptoms = data.nodes_symptom[
+        data.nodes_symptom['uuid'].isin(confirmed_uuids)
+    ][['uuid', 'root_snomed_name', 'name']].drop_duplicates('uuid')
+
+    for _, sym in confirmed_symptoms.iterrows():
+        if node_count >= max_nodes:
+            break
+        sym_id = f"sym_{sym['uuid']}"
+        display_name = (
+            sym['name'] if len(sym['name']) <= 22
+            else sym['root_snomed_name']
+        )
+        net.add_node(
+            sym_id,
+            label=display_name[:22],
+            title=(
+                f"Symptom\n"
+                f"{sym['name']}\n"
+                f"Root: {sym['root_snomed_name']}"
+            ),
+            color={
+                'background': '#3b82f6', 'border': '#1d4ed8',
+                'highlight': {
+                    'background': '#60a5fa', 'border': '#1d4ed8',
+                },
+            },
+            size=16,
+            shape='diamond',
+            font={'color': '#1e293b', 'size': 11},
+        )
+        node_count += 1
+
+    added_syms = {n for n in net.get_nodes() if str(n).startswith('sym_')}
+    for _, sym in confirmed_symptoms.iterrows():
+        sym_id = f"sym_{sym['uuid']}"
+        if sym_id not in added_syms:
+            continue
+        edges = data.edges_present_in[
+            (data.edges_present_in['symptom_uuid'] == sym['uuid']) &
+            (data.edges_present_in['condition_snomed_id'].isin(top_cids))
+        ]
+        for _, e in edges.iterrows():
+            cond_id = f"cond_{e['condition_snomed_id']}"
+            pcs = e['likelihood_condition_given_symptom']
+            score = LIKELIHOOD_SCORES.get(pcs, 0.2)
+            net.add_edge(
+                sym_id, cond_id,
+                title=f"P(C|S): {pcs}",
+                width=score * 3,
+                color={'color': '#cbd5e1', 'highlight': '#2563eb'},
+            )
+
+    tmp = tempfile.NamedTemporaryFile(
+        delete=False, suffix='.html', mode='w', encoding='utf-8',
+    )
+    net.save_graph(tmp.name)
+    tmp.close()
+
+    with open(tmp.name, 'r', encoding='utf-8') as f:
+        html_content = f.read()
+
+    st_components.html(html_content, height=height + 20, scrolling=False)
+
+    try:
+        os.unlink(tmp.name)
+    except OSError:
+        pass
 
 
 def render_section_header(title, subtitle=None):

@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
-from ui.components import triage_badge_html, TRIAGE_COLORS
+from ui.components import (
+    triage_badge_html, TRIAGE_COLORS, render_condition_network,
+)
 
 
 def render():
@@ -323,4 +325,18 @@ def _render_live_dashboard(engine, state):
         </div>
         """,
         unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div style="font-size:0.85em;font-weight:700;color:#334155;
+                    margin-top:16px;margin-bottom:8px;text-transform:uppercase;
+                    letter-spacing:0.4px;">
+            Live Network
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    render_condition_network(
+        top5, state.confirmed_uuids, engine.data, height=450,
     )

@@ -653,6 +653,7 @@ class QuestioningEngine:
             final = (yn + pcs) * pc * float(g_w) * float(a_w)
 
             rows.append({
+                'condition_snomed_id': cid,
                 'condition_name': name,
                 'triage_level': triage,
                 'yn_points': round(yn, 2),

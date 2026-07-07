@@ -71,7 +71,16 @@ st.markdown("""
 from engine.presets import PRESETS
 from ui.auth import check_auth
 
-is_authenticated = check_auth()
+# TEMPORARILY DISABLED (testing/deployment): doctor name/email registration.
+# To re-enable, uncomment the next line and remove the bypass block below it.
+# is_authenticated = check_auth()
+
+# --- Auth bypass: skip registration and start at the intake page ---
+is_authenticated = True
+if 'doctor' not in st.session_state:
+    st.session_state.doctor = {
+        'id': 'local', 'name': 'Local User', 'email': '',
+    }
 
 # --- Sidebar ---
 with st.sidebar:
