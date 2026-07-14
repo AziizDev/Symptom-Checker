@@ -92,7 +92,7 @@ def _render_variant(q, state):
         )
 
         if st.button(
-            "Confirm", type="primary", use_container_width=True,
+            "Confirm", use_container_width=True,
             key=f"btn_{qkey}",
         ):
             if choice >= len(labels):
@@ -115,7 +115,7 @@ def _render_variant(q, state):
         col1, col2 = st.columns(2)
         with col1:
             if st.button(
-                "Confirm Selection", type="primary",
+                "Confirm Selection",
                 use_container_width=True, key=f"btn_yes_{qkey}",
             ):
                 _submit(selected, comment)
@@ -142,7 +142,7 @@ def _render_discovered(q, state):
     col1, col2 = st.columns(2)
     with col1:
         if st.button(
-            "Yes", type="primary", use_container_width=True,
+            "Yes", use_container_width=True,
             key=f"btn_yes_{qkey}",
         ):
             _submit(True, comment)
@@ -169,7 +169,7 @@ def _render_prerequisite(q, state):
     col1, col2 = st.columns(2)
     with col1:
         if st.button(
-            "Yes", type="primary", use_container_width=True,
+            "Yes", use_container_width=True,
             key=f"btn_yes_{qkey}",
         ):
             _submit(True, comment)
@@ -202,7 +202,7 @@ def _render_screening(q, state):
     col1, col2 = st.columns(2)
     with col1:
         if st.button(
-            "Yes", type="primary", use_container_width=True,
+            "Yes", use_container_width=True,
             key=f"btn_yes_{qkey}",
         ):
             _submit(True, comment)

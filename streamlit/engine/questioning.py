@@ -31,6 +31,7 @@ class QuestioningState:
     stop_reason: str
     gender: str
     age: int
+    chief_complaint: str = ''
     discovered_q_count: int = 0
     prereqs_done: bool = False
     total_expected: int = 10
@@ -59,11 +60,17 @@ class QuestioningEngine:
     def _apply_budget(self):
         mode = self.budget['mode']
         effective_max = self.budget['global_max']
+        # Only reserve slots for screening if red flags are actually enabled,
+        # otherwise the reserved questions would go unused.
+        screening_max = (
+            self.budget['screening_max']
+            if RED_FLAG_CONFIG.get('enabled', False) else 0
+        )
         if mode == 'full':
             effective_max -= self.budget['adaptive_max']
-            effective_max -= self.budget['screening_max']
+            effective_max -= screening_max
         elif mode == 'no_adaptive':
-            effective_max -= self.budget['screening_max']
+            effective_max -= screening_max
         effective_max = max(effective_max, 1)
         self._base_max = min(self.q_config['max_questions'], effective_max)
 
@@ -154,6 +161,7 @@ class QuestioningEngine:
             stop_reason='',
             gender=gender,
             age=age,
+            chief_complaint=root_name,
             discovered_q_count=0,
             prereqs_done=prereqs_done,
             total_expected=self._base_max,
@@ -260,13 +268,18 @@ class QuestioningEngine:
                 state.protection_counters, self.elim_config, self.data
             )
             state.candidate_pool -= eliminated
-            self._log_question(state, q, 'no', connected_cids, eliminated)
+            self._log_question(
+                state, q, 'no', connected_cids, eliminated,
+                answer_detail='None of these',
+            )
         else:
             selected_uuids = set()
+            selected_labels = []
             for idx in selected_indices:
                 if 0 <= idx < len(options):
                     state.confirmed_uuids.append(options[idx]['uuid'])
                     selected_uuids.add(options[idx]['uuid'])
+                    selected_labels.append(options[idx]['label'])
             for o in options:
                 if o['uuid'] not in selected_uuids:
                     state.denied_uuids.append(o['uuid'])
@@ -279,7 +292,10 @@ class QuestioningEngine:
                 state.protection_counters, self.elim_config, self.data
             )
             state.candidate_pool -= eliminated
-            self._log_question(state, q, 'yes', connected_cids, eliminated)
+            self._log_question(
+                state, q, 'yes', connected_cids, eliminated,
+                answer_detail=', '.join(selected_labels),
+            )
 
     def _process_discovered_answer(self, state, q, answer_yes):
         connected_edges = self.data.edges_present_in[
@@ -374,8 +390,10 @@ class QuestioningEngine:
         state.question_log.append({
             'order': state.questions_asked + 1,
             'type': 'screening',
+            'root_symptom': '-',
             'question': q['question'],
             'answer': 'yes' if answer_yes else 'no',
+            'answer_detail': 'yes' if answer_yes else 'no',
             'eliminated': 0,
             'pool_after': len(state.candidate_pool),
             'connected': q['condition_name'],
@@ -666,7 +684,8 @@ class QuestioningEngine:
         rows.sort(key=lambda x: x['final_score'], reverse=True)
         return rows[:n]
 
-    def _log_question(self, state, q, answer_type, connected_cids, eliminated):
+    def _log_question(self, state, q, answer_type, connected_cids, eliminated,
+                      answer_detail=None):
         def _get_name(cid):
             row = self.data.nodes_condition[
                 self.data.nodes_condition['snomed_id'] == cid
@@ -676,8 +695,14 @@ class QuestioningEngine:
         state.question_log.append({
             'order': state.questions_asked + 1,
             'type': q['type'],
+            # Prerequisite questions ('Are you pregnant?') are not tied to a
+            # symptom, so they have no root.
+            'root_symptom': q.get('root_name', '-') or '-',
             'question': q.get('question', ''),
             'answer': answer_type,
+            # For variant questions 'yes' alone is meaningless -- it hides which
+            # option was chosen. answer_detail carries the selected label(s).
+            'answer_detail': answer_detail or answer_type,
             'eliminated': len(eliminated),
             'pool_after': len(state.candidate_pool),
             'connected': ', '.join(

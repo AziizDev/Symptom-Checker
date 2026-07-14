@@ -8,8 +8,14 @@ from ui.components import (
     render_condition_card, triage_badge_html, triage_color,
     TRIAGE_COLORS, TRIAGE_LABELS, TRIAGE_BG_LIGHT,
     render_metric_card, render_section_header,
-    render_condition_network,
+    render_condition_network, render_speciality_breakdown,
 )
+
+# Columns hidden from the Question Log view. They stay in state.question_log
+# (audit trail / DB), we just don't show them.
+QUESTION_LOG_HIDDEN = ['connected', 'pool_after', 'answer']
+
+TOP_N = 5
 
 
 def render():
@@ -78,6 +84,231 @@ def render():
         unsafe_allow_html=True,
     )
 
+    tab_summary, tab_engine = st.tabs(["Clinical Summary", "Engine Detail"])
+
+    with tab_summary:
+        _render_clinical_summary(state, result_df)
+
+    with tab_engine:
+        _render_engine_detail(state, result_df, detail_df, data)
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+    if st.button(
+        "Start New Assessment", type="primary",
+        use_container_width=True,
+    ):
+        doctor = st.session_state.get('doctor')
+        preset = st.session_state.get('preset', 'Standard')
+        for key in list(st.session_state.keys()):
+            if key not in (
+                'doctor', 'preset', 'preset_select', 'admin_pin_input',
+            ):
+                del st.session_state[key]
+        if doctor:
+            st.session_state.doctor = doctor
+        st.session_state.preset = preset
+        st.session_state.page = 'intake'
+        st.rerun()
+
+
+# --------------------------------------------------------------------------
+# Clinical Summary — the doctor-facing note. No engine internals here:
+# no scores, no pool sizes, no network graph. See Engine Detail for those.
+# --------------------------------------------------------------------------
+
+def _render_clinical_summary(state, result_df):
+    gender = 'Male' if str(state.gender).upper().startswith('M') else 'Female'
+    chief = getattr(state, 'chief_complaint', '') or '-'
+
+    st.markdown(
+        f"""
+        <div style="border:1px solid #e2e8f0;border-radius:10px;
+                    background:#ffffff;padding:18px 22px;margin-bottom:18px;
+                    box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+            <div style="display:flex;gap:32px;flex-wrap:wrap;">
+                <div>
+                    <div style="{_LABEL}">Age</div>
+                    <div style="{_VALUE}">{state.age}</div>
+                </div>
+                <div>
+                    <div style="{_LABEL}">Gender</div>
+                    <div style="{_VALUE}">{gender}</div>
+                </div>
+                <div style="flex:1;min-width:200px;">
+                    <div style="{_LABEL}">Chief Complaint</div>
+                    <div style="{_VALUE}">{chief}</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    top = result_df.head(TOP_N)
+
+    # --- Specialities ------------------------------------------------------
+    # Sits directly under the patient header, before History (manager's call).
+    if len(top) > 0:
+        render_section_header(
+            "Suggested Specialities",
+            f"Specialities covering the top {len(top)} conditions. "
+            "Click one to see its conditions",
+        )
+        render_speciality_breakdown(top.to_dict('records'))
+
+    # --- History -----------------------------------------------------------
+    # NOTE: chronological transcript for now. Planned change (after manager
+    # review): regroup into positive findings then pertinent negatives.
+    render_section_header(
+        "History",
+        "Questions asked and the answers given, in order",
+    )
+
+    if state.question_log:
+        rows_html = ""
+        for entry in state.question_log:
+            root = entry.get('root_symptom', '-')
+            root_html = (
+                f'<div style="font-size:0.78em;color:#94a3b8;margin-top:2px;">'
+                f're: {root}</div>' if root and root != '-' else ''
+            )
+            answer = entry.get('answer_detail') or entry.get('answer', '')
+            is_no = str(answer).lower() in ('no', 'none of these')
+            a_color = '#64748b' if is_no else '#0f172a'
+            a_weight = '500' if is_no else '700'
+            rows_html += f"""
+            <tr>
+                <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;
+                           color:#94a3b8;font-size:0.85em;width:28px;
+                           vertical-align:top;">
+                    {entry.get('order', '')}
+                </td>
+                <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;
+                           color:#334155;font-size:0.9em;">
+                    {entry.get('question', '')}
+                    {root_html}
+                </td>
+                <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;
+                           color:{a_color};font-size:0.9em;font-weight:{a_weight};
+                           text-align:right;white-space:nowrap;">
+                    {answer}
+                </td>
+            </tr>
+            """
+        st.markdown(
+            f"""
+            <div style="border:1px solid #e2e8f0;border-radius:10px;
+                        overflow:hidden;background:#ffffff;
+                        box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+                <table style="width:100%;border-collapse:collapse;">
+                    <thead>
+                        <tr style="background:#f1f5f9;">
+                            <th style="{_TH}">#</th>
+                            <th style="{_TH}">Question</th>
+                            <th style="{_TH}text-align:right;">Answer</th>
+                        </tr>
+                    </thead>
+                    <tbody>{rows_html}</tbody>
+                </table>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.caption("No questions were asked.")
+
+    # --- Differential ------------------------------------------------------
+    # Deliberately NOT called "Assessment": that word means the clinician's own
+    # judgement. This is an engine-suggested list, and it is labelled as such.
+    render_section_header(
+        "Suggested Differential",
+        "Decision support only, not a diagnosis",
+    )
+
+    if len(top) > 0:
+        rows_html = ""
+        for i, row in top.iterrows():
+            spec = row.get('speciality') or '-'
+            rows_html += f"""
+            <tr>
+                <td style="padding:12px;border-bottom:1px solid #f1f5f9;
+                           width:30px;">
+                    <span style="background:#f1f5f9;color:#475569;width:24px;
+                                 height:24px;border-radius:50%;display:inline-flex;
+                                 align-items:center;justify-content:center;
+                                 font-weight:700;font-size:0.75em;">
+                        {i + 1}
+                    </span>
+                </td>
+                <td style="padding:12px;border-bottom:1px solid #f1f5f9;
+                           color:#0f172a;font-weight:600;font-size:0.95em;">
+                    {row['condition_name']}
+                </td>
+                <td style="padding:12px;border-bottom:1px solid #f1f5f9;
+                           color:#475569;font-size:0.85em;">
+                    {spec}
+                </td>
+                <td style="padding:12px;border-bottom:1px solid #f1f5f9;
+                           text-align:right;">
+                    {triage_badge_html(row['triage_level'])}
+                </td>
+            </tr>
+            """
+        st.markdown(
+            f"""
+            <div style="border:1px solid #e2e8f0;border-radius:10px;
+                        overflow:hidden;background:#ffffff;
+                        box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+                <table style="width:100%;border-collapse:collapse;">
+                    <thead>
+                        <tr style="background:#f1f5f9;">
+                            <th style="{_TH}">#</th>
+                            <th style="{_TH}">Diagnosis</th>
+                            <th style="{_TH}">Speciality</th>
+                            <th style="{_TH}text-align:right;">Triage</th>
+                        </tr>
+                    </thead>
+                    <tbody>{rows_html}</tbody>
+                </table>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.warning("No conditions survived the elimination process.")
+
+    st.markdown(
+        """
+        <div style="margin-top:22px;padding:12px 16px;background:#f8fafc;
+                    border:1px solid #e2e8f0;border-radius:8px;
+                    font-size:0.82em;color:#64748b;line-height:1.5;">
+            This summary is generated by an automated symptom checker and is
+            intended as clinical decision support. It is not a diagnosis and
+            does not replace clinical judgement.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+_LABEL = (
+    "font-size:0.7em;color:#94a3b8;font-weight:700;text-transform:uppercase;"
+    "letter-spacing:0.5px;margin-bottom:3px;"
+)
+_VALUE = "font-size:1em;color:#0f172a;font-weight:600;"
+
+_TH = (
+    "padding:10px 12px;text-align:left;font-size:0.72em;color:#64748b;"
+    "font-weight:700;text-transform:uppercase;letter-spacing:0.5px;"
+)
+
+
+# --------------------------------------------------------------------------
+# Engine Detail — everything the engine did. This is the debug view.
+# --------------------------------------------------------------------------
+
+def _render_engine_detail(state, result_df, detail_df, data):
     total = len(st.session_state.expansion.condition_ids)
     eliminated = total - len(state.candidate_pool)
 
@@ -93,20 +324,27 @@ def render():
 
     render_section_header(
         "Top Conditions",
-        f"Top 5 of {len(result_df)} conditions scored and ranked"
+        f"Top {TOP_N} of {len(result_df)} conditions scored and ranked"
     )
 
     if len(result_df) > 0:
         max_score = result_df.iloc[0]['final_score']
-        for i, row in result_df.head(5).iterrows():
+        for i, row in result_df.head(TOP_N).iterrows():
             render_condition_card(row, i + 1, max_score=max_score)
 
-        if len(result_df) > 5:
+        if len(result_df) > TOP_N:
             with st.expander(
                 f"All Ranked Conditions ({len(result_df)} total)"
             ):
                 for i, row in result_df.iterrows():
                     render_condition_card(row, i + 1, max_score=max_score)
+
+        render_section_header(
+            "Specialities",
+            f"Specialities of the top {TOP_N} conditions. "
+            "Click one to see its conditions",
+        )
+        render_speciality_breakdown(result_df.head(TOP_N).to_dict('records'))
     else:
         st.warning("No conditions survived the elimination process.")
 
@@ -205,15 +443,33 @@ def render():
 
     with st.expander("Question Log"):
         if state.question_log:
+            chief = getattr(state, 'chief_complaint', '') or '-'
+            st.markdown(
+                f"""
+                <div style="padding:8px 12px;margin-bottom:10px;
+                            background:#f1f5f9;border-radius:6px;
+                            font-size:0.88em;color:#334155;">
+                    <span style="color:#64748b;font-weight:600;">
+                        Chief Complaint (CC):
+                    </span>
+                    <span style="font-weight:700;color:#0f172a;">{chief}</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
             log_df = pd.DataFrame(state.question_log)
-            st.dataframe(log_df, use_container_width=True, hide_index=True)
+            # Display copy only — the hidden columns remain in question_log.
+            view_df = log_df.drop(
+                columns=[c for c in QUESTION_LOG_HIDDEN if c in log_df.columns]
+            ).rename(columns={'answer_detail': 'answer'})
+            st.dataframe(view_df, use_container_width=True, hide_index=True)
         else:
             st.caption("No questions were asked.")
 
     # --- Evaluation Section ---
     # TEMPORARILY DISABLED (testing): doctor evaluation form.
-    # To re-enable, uncomment the block below and remove the standalone
-    # "Start New Assessment" button at the end of this function.
+    # To re-enable, uncomment the block below. The "Start New Assessment"
+    # button lives in render(), below the tabs.
     #
     # st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
     # render_section_header(
@@ -253,26 +509,3 @@ def render():
     #             st.rerun()
     # else:
     #     st.success("Thank you for your evaluation!")
-
-    st.markdown(
-        "<div style='height:20px'></div>", unsafe_allow_html=True,
-    )
-
-    if st.button(
-        "Start New Assessment", type="primary",
-        use_container_width=True,
-    ):
-        doctor = st.session_state.get('doctor')
-        preset = st.session_state.get('preset', 'Standard')
-        for key in list(st.session_state.keys()):
-            if key not in (
-                'doctor', 'preset', 'preset_select', 'admin_pin_input',
-            ):
-                del st.session_state[key]
-        if doctor:
-            st.session_state.doctor = doctor
-        st.session_state.preset = preset
-        st.session_state.page = 'intake'
-        st.rerun()
-
-

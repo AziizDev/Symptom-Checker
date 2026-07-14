@@ -55,6 +55,7 @@ def rank_conditions(confirmed_uuids, denied_uuids, surviving_pool,
         name = cond['name'].values[0] if len(cond) > 0 else 'Unknown'
         triage = cond['triage_level'].values[0] if len(cond) > 0 else 'unknown'
         type_c = cond['type_condition'].values[0] if len(cond) > 0 else 'unknown'
+        spec = data.condition_speciality.get(cid, '')
 
         g_w = cond[gender_col].values[0] if len(cond) > 0 else 1.0
         a_w = cond[age_col].values[0] if len(cond) > 0 else 1.0
@@ -75,6 +76,7 @@ def rank_conditions(confirmed_uuids, denied_uuids, surviving_pool,
             'condition_name': name,
             'triage_level': triage,
             'type_condition': type_c,
+            'speciality': spec,
             'num_symptom_matches': matches,
             'yn_points': round(yn, 2),
             'pcs_score': round(pcs, 2),

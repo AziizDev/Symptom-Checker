@@ -68,6 +68,16 @@ def render_condition_card(row, rank, max_score=None):
             f'P(C) {pc_weight:.2f}</span>'
         )
 
+    speciality = row.get('speciality', '')
+    spec_badge = ''
+    if speciality:
+        spec_badge = (
+            f'<span style="border:1px solid #cbd5e1;color:#475569;'
+            f'background:#ffffff;padding:5px 10px;border-radius:6px;'
+            f'font-size:0.72em;font-weight:600;white-space:nowrap;'
+            f'line-height:1;">{speciality}</span>'
+        )
+
     st.markdown(
         f"""
         <div style="
@@ -104,15 +114,19 @@ def render_condition_card(row, rank, max_score=None):
                             </span>
                         </div>
                     </div>
-                    <div style="text-align:right;flex-shrink:0;margin-left:12px;">
-                        <div style="font-size:1.6em;font-weight:800;
-                                    color:{accent};line-height:1;">
-                            {score:.1f}
-                        </div>
-                        <div style="font-size:0.65em;color:#94a3b8;
-                                    text-transform:uppercase;letter-spacing:0.5px;
-                                    margin-top:2px;">
-                            score
+                    <div style="display:flex;align-items:center;gap:12px;
+                                flex-shrink:0;margin-left:12px;">
+                        {spec_badge}
+                        <div style="text-align:right;">
+                            <div style="font-size:1.6em;font-weight:800;
+                                        color:{accent};line-height:1;">
+                                {score:.1f}
+                            </div>
+                            <div style="font-size:0.65em;color:#94a3b8;
+                                        text-transform:uppercase;letter-spacing:0.5px;
+                                        margin-top:2px;">
+                                score
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -324,6 +338,48 @@ def render_condition_network(conditions, confirmed_uuids, data,
         os.unlink(tmp.name)
     except OSError:
         pass
+
+
+def group_by_speciality(rows):
+    """Group ranked conditions by speciality.
+
+    `rows` must already be in rank order. Specialities are ordered by their
+    best-ranked condition, so the speciality of the #1 condition comes first.
+    Returns [(speciality, [(rank, row), ...]), ...].
+    """
+    groups = {}
+    for i, row in enumerate(rows):
+        spec = row.get('speciality') or '-'
+        groups.setdefault(spec, []).append((i + 1, row))
+    return sorted(groups.items(), key=lambda kv: kv[1][0][0])
+
+
+def render_speciality_breakdown(rows):
+    """Speciality list for the top-N conditions; click one to see its conditions."""
+    for spec, items in group_by_speciality(rows):
+        n = len(items)
+        with st.expander(f"{spec}  ({n} condition{'s' if n > 1 else ''})"):
+            for rank, row in items:
+                st.markdown(
+                    f"""
+                    <div style="display:flex;align-items:center;gap:10px;
+                                padding:7px 2px;">
+                        <span style="background:#f1f5f9;color:#475569;
+                                     width:22px;height:22px;border-radius:50%;
+                                     display:inline-flex;align-items:center;
+                                     justify-content:center;font-weight:700;
+                                     font-size:0.72em;flex-shrink:0;">
+                            {rank}
+                        </span>
+                        <span style="font-weight:600;color:#0f172a;
+                                     font-size:0.92em;">
+                            {row['condition_name']}
+                        </span>
+                        {triage_badge_html(row['triage_level'])}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
 
 def render_section_header(title, subtitle=None):

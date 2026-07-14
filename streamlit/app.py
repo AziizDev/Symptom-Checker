@@ -44,10 +44,23 @@ st.markdown("""
     .stButton>button:not([kind="primary"]) {
         border-radius: 8px;
         padding: 0.6em 1.2em;
-        font-weight: 500;
-        background: #f1f5f9 !important;
+        font-weight: 600;
+        background: #ffffff !important;
         color: #334155 !important;
         border: 1px solid #cbd5e1 !important;
+        transition: background 0.15s ease, color 0.15s ease,
+                    border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .stButton>button[kind="secondary"]:hover,
+    .stButton>button:not([kind="primary"]):hover {
+        background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%) !important;
+        color: #ffffff !important;
+        border-color: #1d4ed8 !important;
+        box-shadow: 0 4px 12px rgba(37,99,235,0.3);
+    }
+    .stButton>button[kind="secondary"]:hover p,
+    .stButton>button:not([kind="primary"]):hover p {
+        color: #ffffff !important;
     }
 
     .stProgress > div > div {

@@ -72,8 +72,16 @@ RELATION_QUESTIONS = {
     'laterality':        'Which side is it on?',
 }
 
+# TEMPORARILY DISABLED (testing): the whole red-flag subsystem.
+# 'enabled': False is the master switch — it turns off BOTH halves:
+#   1. the "Red Flag Screening" extra questions (phase5_screening), and
+#   2. the Red Flag Alerts panel + score bonus on the results page,
+#      because state.red_flag_results['triggered'] is only ever populated
+#      inside _build_screening_queue(), which no longer runs.
+# It also stops the budget reserving screening slots (see _apply_budget),
+# so no questions are wasted. Set back to True to restore everything.
 RED_FLAG_CONFIG = {
-    'enabled': True,
+    'enabled': False,
     'bonus': 1.0,
     'screening_top_n': 5,
 }
